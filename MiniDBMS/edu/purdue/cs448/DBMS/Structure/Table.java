@@ -1,0 +1,52 @@
+package edu.purdue.cs448.DBMS.Structure;
+
+import java.util.*;
+
+public class Table implements java.io.Serializable {
+private static final long serialVersionUID = 1567876578L;
+
+	private String tableName;
+	private ArrayList<Attribute> attrList;
+	private Hashtable<String, Integer> attrPosTable;
+	private ArrayList<Integer> primaryList;
+	private List referenceList;
+
+	public Table(String tableName, ArrayList<Attribute> attrList, ArrayList<Integer> primaryList, List referenceList, Hashtable<String, Integer> attrPosTable){
+		this.tableName = tableName;
+		this.attrList = attrList;
+		this.attrPosTable = attrPosTable;
+		this.primaryList = primaryList;
+		this.referenceList = referenceList;
+	}
+
+	public ArrayList<Attribute> getAttrList(){
+		return this.attrList;
+	}
+
+	public ArrayList<Integer> getPrimaryList(){
+		return this.primaryList;
+	}
+
+	public List getReferenceList(){
+		return this.referenceList;
+	}
+
+	public String getTableName(){
+		return this.tableName;
+	}
+
+
+	public int getAttrPos(String valueName){
+		if(this.attrPosTable.containsKey(valueName)){
+			return this.attrPosTable.get(valueName).intValue();
+		}else{
+			return -1;
+		}	
+	}
+
+	public Hashtable<String, Integer> getAttrPosHashtable(){
+		return this.attrPosTable;
+	}
+
+}
+

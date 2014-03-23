@@ -1,0 +1,548 @@
+
+
+options {
+  JAVA_UNICODE_ESCAPE = true;
+  STATIC = false;
+  IGNORE_CASE = true;
+}
+
+PARSER_BEGIN(DBInterpreter)
+    package edu.purdue.cs448.DBMS;
+    
+
+    import edu.purdue.cs448.DBMS.Structure.*;
+    import java.util.*;
+    import java.io.InputStream;
+    import java.io.IOException;
+
+    public class DBInterpreter {
+        public static void main(String[] args) throws IOException{
+            DBInterpreter interpreter;
+	    DBExecutor executor;
+	    Query query;
+	    InputStream input;
+
+            if (args.length > 1) {
+                System.out.println("Use: dbmsinterpreter <input file>");
+                return;
+            }
+
+	    if (args.length == 1) {
+            	try {
+		    input = new java.io.FileInputStream(args[0]);
+            	    interpreter = new DBInterpreter(input);
+            	} catch (java.io.FileNotFoundException ex) {
+                	System.out.println("File " + args[0] + " not found.");
+                	return;
+            	}
+
+	    } else{
+		    input = System.in;
+		    interpreter = new DBInterpreter(input); 
+		    
+	    }
+		executor = new DBExecutor();
+		while(true){
+            		try {
+				//Prompt when in interactive mode
+				if(input == System.in){
+					System.out.print("YSQL>>");
+				}
+               		 	query = interpreter.Query();
+
+				if(query == null){
+					return;
+				}
+
+				executor.execute(query);
+				if(input != System.in && input.available() == 0){
+					return;
+				}
+            		} catch (ParseException ex) {
+               		 	System.err.println(ex.getMessage());
+				return;
+            		} catch (Error ex){
+				System.err.println(ex.getMessage());
+				return;
+			} catch (IOException ex){
+				System.err.println("YSQL: IO Exception");
+				return;
+			}
+		}
+
+
+     }
+    }
+PARSER_END(DBInterpreter)
+
+// Lexical definitions
+
+// Whitespace
+SKIP :
+{
+      " " 
+    | "\t" 
+    | "\n" 
+    | "\r" 
+    | "\f"
+}
+
+// Comments
+SKIP :
+{
+    < "{" (~["}","{"])* "}" >
+}
+
+// SQL keywords
+TOKEN :
+{
+
+    < KWORD_SELECT: "SELECT" >
+|   < KWORD_INSERT: "INSERT" >
+|   < KWORD_UPDATE: "UPDATE" >
+|   < KWORD_CREATE: "CREATE" >
+|   < KWORD_DELETE: "DELETE" >
+|   < KWORD_DROP: "DROP" >
+|   < KWORD_FROM: "FROM" >
+|   < KWORD_WHERE: "WHERE" >
+|   < KWORD_INTO: "INTO" >
+|   < KWORD_TABLE: "TABLE" >
+|   < KWORD_VALUES: "VALUES" >
+|   < KWORD_SET: "SET" >
+|   < KWORD_AND: "AND" >
+|   < KWORD_OR: "OR" >
+|   < KWORD_CHECK: "CHECK" >
+|   < KWORD_PRIMARY: "PRIMARY" >
+|   < KWORD_KEY: "KEY" >
+|   < KWORD_REF: "REFERENCES" >
+|   < KWORD_FOREIGN: "FOREIGN" >
+|   < KWORD_HELP: "HELP" >
+|   < KWORD_DESCRIBE: "DESCRIBE" >
+|   < KWORD_CHAR: "CHAR" >
+|   < KWORD_INT: "INT" >
+|   < KWORD_DECIMAL: "DECIMAL" >
+|   < KWORD_QUIT: "QUIT" >
+|   < KWORD_TABLES: "TABLES" >
+|   < KWORD_USER: "USER" >
+|   < KWORD_SUBSCHEMA: "SUBSCHEMA" >
+
+}
+
+// MiniJava symbols
+TOKEN :
+{
+
+    < SYM_LPARENTHESE: "(" >
+|   < SYM_RPARENTHESE: ")" >
+|   < SYM_SEMICOLON: ";" >
+|   < SYM_EQUAL: "=" >
+|   < SYM_LESS: "<" >
+|   < SYM_LESSEQUAL: "<=" >
+|   < SYM_NOTEQUAL: "!=" >
+|   < SYM_GREATER: ">" >
+|   < SYM_GREATEREQUAL: ">=" >
+|   < SYM_PLUS: "+" >
+|   < SYM_MINUS: "-" >
+|   < SYM_ASTERISK: "*" >
+|   < SYM_SLASH: "/" >
+|   < SYM_PERCENT: "%" >
+|   < SYM_COMMA: "," >
+}
+
+// Identifiers
+TOKEN :
+{
+    < IDENTIFIER: ["a"-"z","A"-"Z","_"] ( ["a"-"z","A"-"Z","_","0"-"9"] )* >
+}
+
+// literals
+TOKEN :
+{
+ < INT_LITERAL: ( ["0"-"9"] )+ >
+ | < FLOATING_POINT_LITERAL:
+          (["0"-"9"])* "." (["0"-"9"])+ (<EXPONENT>)?
+        | (["0"-"9"])+ "." (["0"-"9"])* (<EXPONENT>)?
+        | (["0"-"9"])+ (<EXPONENT>)?
+    >
+  | < #EXPONENT: ["e","E"] (["+","-"])? (["0"-"9"])+ >
+  | < STRING_DQUOTE_LITERAL: "\"" (~["\""])* "\"" >
+  | < STRING_LITERAL: "'" (~["'"])* ( "''" (~["'"])* )* "'" >
+
+}
+
+
+
+// Grammar
+Query Query():
+{
+    Query query;
+}
+{
+	<EOF> {return null; }
+|     query = SQLStatement() ";" 
+
+    { return query; }
+}
+
+// FILLIN: Remainder of the grammar
+Query SQLStatement():
+{
+     Query query;
+}
+{
+(
+	LOOKAHEAD(2) "CREATE" "TABLE" query = Create()
+|	"DROP" "TABLE" query = Drop()
+|	"SELECT" query = Select()
+|	"INSERT" "INTO" query = Insert()
+|	LOOKAHEAD(2) "DELETE" "FROM" query = Delete()
+|       "UPDATE" query = Update()
+|	"HELP" query = Help()
+|	"QUIT" query = Quit() 
+
+|	LOOKAHEAD(2) "CREATE" "USER" query = CreateUser()
+|	"DELETE" "USER" query = DeleteUser()
+|	"CREATE" "SUBSCHEMA" query = CreateSubschema()
+
+)
+	{ return query; }
+
+} 
+
+CreateSubschema CreateSubschema():
+{
+	Query query;
+	Token tableName;
+	Token attrName;
+	ArrayList<String> attrNameList = new ArrayList<String>();
+}
+{
+
+	tableName = Identifier() attrName = Identifier() { attrNameList.add(attrName.image); } ( "," attrName = Identifier() { attrNameList.add(attrName.image); } )*
+
+	{ return null; }
+
+}
+
+CreateUser CreateUser():
+{
+     Query query;
+     Token userName;
+     boolean userType;
+}
+{
+
+	userName = Identifier() ( "USER-A" { userType = true; } | "USER-B" { userType = false; } )
+
+	{ return null; }
+
+}
+
+DeleteUser DeleteUser():
+{
+    Query query;
+    Token userName;
+}
+{
+
+      userName = Identifier() 
+
+      { return null; }
+
+}
+
+Create Create():
+{
+    Token tableName;
+    Token attrName;
+    ArrayList<Attribute> attrList = new ArrayList<Attribute>();
+    Hashtable<String, Integer> attrPosTable = new Hashtable<String, Integer>();
+    Attribute attribute;
+    Token lengthToken = null;
+    Condition cond = null;
+    Attribute.Type type;
+    ArrayList<Integer> primaryList = new ArrayList<Integer>();
+    Token foreignTableName;
+    Token foreignAttribute;
+}
+{
+	
+
+ tableName = Identifier() 
+	"(" 
+( attrName = Identifier() 
+	(
+	 "DECIMAL" {type = Attribute.Type.DECIMAL; } | "INT" {type = Attribute.Type.INT; } | "CHAR" {type = Attribute.Type.CHAR; } "(" lengthToken = <INT_LITERAL> ")" 
+	)
+	[ "CHECK" "(" cond = Condition() ")"  ] "," 
+	{ 
+		if(cond != null && !cond.idCheck(attrName.image))
+			throw new Error("CREATE TABLE: CHECK ATTRIBUTE INVALID " + attrName.image);
+		attribute = new Attribute(type, attrName.image); 
+		if(lengthToken != null)attribute.setLength(Integer.parseInt(lengthToken.image));
+		if(cond != null)attribute.setCheckCond(cond);
+		if(!attrList.contains(attribute)){
+			//Save position of attribute name
+			attrPosTable.put(attrName.image, Integer.valueOf(attrList.size()));
+			attrList.add(attribute);
+		}else
+			throw new Error("CREATE TABLE: DUPLICATED ATTRIBUTES");
+	} 
+
+	)+ "PRIMARY" "KEY" "(" 
+	  attrName = Identifier() 
+		{
+			if( !primaryList.contains(attrName.image) && attrList.contains( new Attribute(Attribute.Type.INT, attrName.image) ) )
+				primaryList.add(attrPosTable.get(attrName.image));
+			else
+				throw new Error("CREATE TABLE: INVALID PRIMARY KEY " + attrName.image);
+		} 
+	  ( "," attrName = Identifier() 
+		{ 		
+			if( !primaryList.contains(attrName.image) && attrList.contains( new Attribute(Attribute.Type.INT, attrName.image) ) )
+				primaryList.add(attrPosTable.get(attrName.image));
+			else
+				throw new Error("CREATE TABLE: INVALID PRIMARY KEY " + attrName.image);
+		} 
+	  )*  ")" 
+
+	( "," 
+		"FOREIGN" "KEY" "(" attrName = Identifier() ")" "REFERENCES" foreignTableName = Identifier() "(" foreignAttribute = Identifier() ")" 
+		{
+			if(!attrList.contains(new Attribute(Attribute.Type.INT, attrName.image)))
+				throw new Error("CREATE TABLE: FOREIGN KEY " + attrName.image + " NOT EXISTS");
+
+			if(foreignTableName.image.equals(tableName.image))
+				throw new Error("CREATE TABLE: FOREIGN KEY TABLE CANNOT BE THE SAME NAME");
+		}
+	)*
+
+	")" 
+
+
+	{return new Create(tableName.image, attrList, primaryList, null, attrPosTable); }
+
+}
+
+Drop Drop():
+{
+	Drop dropQuery;
+	Token tableName;
+}
+{
+	tableName = Identifier()
+	{ return new Drop(tableName.image); }
+
+}
+
+Select Select():
+{
+	Token attribute;
+	ArrayList<String> attrNameList = new ArrayList<String>();
+	Token table;
+	ArrayList<String> tableList = new ArrayList<String>();
+	Condition cond = null;
+}
+{
+	( ( attribute = Identifier() { attrNameList.add(attribute.image); } ( "," attribute = Identifier() { attrNameList.add(attribute.image); } )* ) | attribute = <SYM_ASTERISK> )
+	"FROM" table = Identifier() { tableList.add(table.image); } ( "," table = Identifier() { tableList.add(table.image); } )*
+	( "WHERE" cond = Condition() )?
+
+	{ 
+		if(attribute.image.equals("*"))
+			return new Select(tableList, cond, true);
+		else	
+			return new Select(attrNameList, tableList, cond);
+	 }
+}
+
+Insert Insert():
+{
+	Token table;
+	Token value;
+	ArrayList<String> valueList = new ArrayList<String>();
+
+}
+{
+	table = Identifier() 
+	"VALUES" "(" value = InsertValue() { valueList.add(value.image); } ( "," value = InsertValue() { valueList.add(value.image); } )* ")"
+	
+	{ return new Insert(table.image, valueList); } 
+}
+
+Delete Delete():
+{
+	Token table;
+	Condition cond = null;
+}
+{
+	table = Identifier() 
+	( "WHERE" cond = Condition() )?
+
+	{ return new Delete(table.image, cond); }
+}
+
+Update Update():
+{
+	Token table;
+	Condition cond = null;
+	AttrAssign attrAssign;
+	ArrayList<AttrAssign> attrAssignList = new ArrayList<AttrAssign>();
+}
+{
+	table = Identifier() "SET" attrAssign = AttrAssign() { attrAssignList.add(attrAssign); }  ( "," attrAssign = AttrAssign() { attrAssignList.add(attrAssign); }  )* ( "WHERE" cond = Condition() )?
+
+	{ return new Update(table.image, attrAssignList, cond); }
+}
+
+Help Help():
+{
+	Token describeToken;
+}
+{
+
+
+	"DESCRIBE" describeToken = Identifier() { return new Help(Help.HelpType.DESCRIBE, describeToken.image); }
+|	"CREATE" "TABLE" { return new Help(Help.HelpType.CREATE); }
+|	"DROP" "TABLE" { return new Help(Help.HelpType.DROP); }
+|	"SELECT" { return new Help(Help.HelpType.SELECT); }
+|	"INSERT" { return new Help(Help.HelpType.INSERT); }
+|	"DELETE" { return new Help(Help.HelpType.DELETE); }
+|	"UPDATE" { return new Help(Help.HelpType.UPDATE); }
+|	"TABLES" { return new Help(Help.HelpType.TABLES); }
+
+}
+
+Query Quit():
+{
+}
+{
+	";" { System.exit(0); return null; }
+
+}
+
+
+AttrAssign AttrAssign():
+{
+	Token attribute;
+	Value value;
+}
+{
+
+	attribute = Identifier() "=" value = UpdateValue()	
+
+	{ return new AttrAssign(attribute.image, value); }
+
+}
+
+Condition Condition():
+{
+	Exp exp;
+	Condition cond;
+}
+{
+	exp = LogicOp()
+
+	{ return new Condition(exp); }
+}
+
+
+Exp LogicOp():
+{
+    Exp leftExp = null;
+    Exp rightExp = null;
+    Token op;
+}
+{
+     leftExp = CmpOp() ( ( "AND" | "OR" ) { op = token; } rightExp = CmpOp() { leftExp = new BinaryExp(leftExp, op.image, rightExp); } )*
+
+	{return leftExp; }
+}
+
+
+Exp CmpOp():
+{
+    Exp leftExp = null;
+    Exp rightExp = null;
+    Token op;
+}
+{
+    leftExp = AddOp() ( ( "<" | "<=" | "=" | "!=" | ">" | ">=" ) { op = token; } rightExp = AddOp() { leftExp = new BinaryExp(leftExp, op.image, rightExp); } )*
+
+	{ return leftExp; }
+}
+
+
+Exp AddOp():
+{
+    Exp leftExp = null;
+    Exp rightExp = null;
+    Token op;
+}
+{
+    leftExp = MulOp() ( ( "+" | "-" ) { op = token; } rightExp = MulOp() { leftExp = new BinaryExp(leftExp, op.image, rightExp); } )*
+
+    { return leftExp; }
+}
+
+
+Exp MulOp():
+{
+    Exp leftExp = null;
+    Exp rightExp = null;
+    Token op;
+}
+{
+    leftExp = PrimaryExp() ( ( "*" | "/" | "%" ) { op = token; } rightExp = PrimaryExp() { leftExp = new BinaryExp(leftExp, op.image, rightExp); } )*
+
+	{ return leftExp; }
+}
+
+
+Exp PrimaryExp():
+{
+Exp exp;
+Token idToken;
+}
+{
+      <INT_LITERAL> { return new IntExp(Integer.parseInt(token.image)); }
+|     <FLOATING_POINT_LITERAL> { return new DoubleExp(Double.parseDouble(token.image)); }
+|     <STRING_DQUOTE_LITERAL> { return new StrExp(token.image); }
+|     <STRING_LITERAL> { return new StrExp(token.image); }
+|     idToken = Identifier() { return new IdExp(idToken.image); }
+|     "(" exp = LogicOp() ")" { return exp; } 
+}
+
+Value UpdateValue():
+{
+}
+{
+      <INT_LITERAL> { return new Value(Integer.parseInt(token.image)); }
+|     <FLOATING_POINT_LITERAL> { return new Value(Double.parseDouble(token.image)); }
+|     <STRING_DQUOTE_LITERAL> { return new Value(token.image); }
+|     <STRING_LITERAL> { return new Value(token.image); }
+
+
+}
+
+Token InsertValue():
+{
+}
+{
+(
+      <INT_LITERAL>
+|     <FLOATING_POINT_LITERAL>
+|     <STRING_DQUOTE_LITERAL>
+|     <STRING_LITERAL>
+)
+    { return token; }
+}
+
+Token Identifier():
+{
+}
+{
+     <IDENTIFIER>
+
+    { return token; }
+}
