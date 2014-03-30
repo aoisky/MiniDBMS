@@ -4,6 +4,7 @@ import edu.purdue.cs448.DBMS.DBExecutor;
 import java.util.*;
 public class IdExp extends Exp{
 	private String id;
+	private static final long serialVersionUID = 184721213445224L;
 
 	public IdExp(String id){
 		this.id = id;

@@ -18,29 +18,24 @@ PARSER_BEGIN(DBInterpreter)
     public class DBInterpreter {
         public static void main(String[] args) throws IOException{
             DBInterpreter interpreter;
+	    DBUserController userController;
 	    DBExecutor executor;
 	    Query query;
 	    InputStream input;
 
-            if (args.length > 1) {
-                System.out.println("Use: dbmsinterpreter <input file>");
+            if (args.length != 1) {
+                System.out.println("Use: minidbms <userName>");
                 return;
             }
 
-	    if (args.length == 1) {
-            	try {
-		    input = new java.io.FileInputStream(args[0]);
-            	    interpreter = new DBInterpreter(input);
-            	} catch (java.io.FileNotFoundException ex) {
-                	System.out.println("File " + args[0] + " not found.");
-                	return;
-            	}
+		String userName = args[0];
 
-	    } else{
-		    input = System.in;
-		    interpreter = new DBInterpreter(input); 
-		    
-	    }
+		userController = new DBUserController(userName);
+
+		input = System.in;
+		interpreter = new DBInterpreter(input); 
+		
+
 		executor = new DBExecutor();
 		while(true){
             		try {
@@ -50,11 +45,12 @@ PARSER_BEGIN(DBInterpreter)
 				}
                		 	query = interpreter.Query();
 
-				if(query == null){
-					return;
+				query = userController.userCheck(query);				
+
+				if(query != null){
+					executor.execute(query);
 				}
 
-				executor.execute(query);
 				if(input != System.in && input.available() == 0){
 					return;
 				}
@@ -72,6 +68,19 @@ PARSER_BEGIN(DBInterpreter)
 
 
      }
+		//a method to recover from syntax error
+		void error_skipto(int kind) {
+
+  			Token t;
+  			do {
+    				t = getNextToken();
+  			} while (t.kind != kind);
+    				// The above loop consumes tokens all the way up to a token of
+    				// "kind".  We use a do-while loop rather than a while because the
+    				// current token is the one immediately before the erroneous token
+    				// (in our case the token immediately before what should have been
+    				// "if"/"while".
+		}
     }
 PARSER_END(DBInterpreter)
 
@@ -175,13 +184,21 @@ TOKEN :
 // Grammar
 Query Query():
 {
-    Query query;
+    Query query = null;
 }
 {
-	<EOF> {return null; }
-|     query = SQLStatement() ";" 
 
-    { return query; }
+	try {
+(
+	<EOF> { return null; }
+|	query = SQLStatement() ";"  { return query; }
+
+)
+	}catch (ParseException e) {
+		System.out.println(e.toString());
+		error_skipto(SYM_SEMICOLON);
+		return null;
+	}
 }
 
 // FILLIN: Remainder of the grammar
@@ -220,7 +237,7 @@ CreateSubschema CreateSubschema():
 
 	tableName = Identifier() attrName = Identifier() { attrNameList.add(attrName.image); } ( "," attrName = Identifier() { attrNameList.add(attrName.image); } )*
 
-	{ return null; }
+	{ return new CreateSubschema(tableName.image, attrNameList); }
 
 }
 
@@ -228,13 +245,13 @@ CreateUser CreateUser():
 {
      Query query;
      Token userName;
-     boolean userType;
+     User.UserType userType;
 }
 {
 
-	userName = Identifier() ( "USER-A" { userType = true; } | "USER-B" { userType = false; } )
+	userName = Identifier() ( "USER-A" { userType = User.UserType.USER_A; } | "USER-B" { userType = User.UserType.USER_B; } )
 
-	{ return null; }
+	{ return new CreateUser(userType, userName.image); }
 
 }
 
@@ -247,7 +264,7 @@ DeleteUser DeleteUser():
 
       userName = Identifier() 
 
-      { return null; }
+      { return new DeleteUser(userName.image); }
 
 }
 
@@ -264,6 +281,7 @@ Create Create():
     ArrayList<Integer> primaryList = new ArrayList<Integer>();
     Token foreignTableName;
     Token foreignAttribute;
+    Hashtable<String, ForeignReferences> foreignRefTable = new Hashtable<String, ForeignReferences>();
 }
 {
 	
@@ -280,7 +298,10 @@ Create Create():
 			throw new Error("CREATE TABLE: CHECK ATTRIBUTE INVALID " + attrName.image);
 		attribute = new Attribute(type, attrName.image); 
 		if(lengthToken != null)attribute.setLength(Integer.parseInt(lengthToken.image));
-		if(cond != null)attribute.setCheckCond(cond);
+		if(cond != null){
+			attribute.setCheckCond(cond);
+			cond = null;
+		}
 		if(!attrList.contains(attribute)){
 			//Save position of attribute name
 			attrPosTable.put(attrName.image, Integer.valueOf(attrList.size()));
@@ -314,13 +335,15 @@ Create Create():
 
 			if(foreignTableName.image.equals(tableName.image))
 				throw new Error("CREATE TABLE: FOREIGN KEY TABLE CANNOT BE THE SAME NAME");
+
+			foreignRefTable.put(attrName.image, new ForeignReferences(foreignTableName.image, foreignAttribute.image));
 		}
 	)*
 
 	")" 
 
 
-	{return new Create(tableName.image, attrList, primaryList, null, attrPosTable); }
+	{return new Create(tableName.image, attrList, primaryList, foreignRefTable, attrPosTable); }
 
 }
 
@@ -417,7 +440,7 @@ Query Quit():
 {
 }
 {
-	";" { System.exit(0); return null; }
+	";" { System.out.println(); System.exit(0); return null; }
 
 }
 

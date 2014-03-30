@@ -8,14 +8,14 @@ public class Create extends Query{
 	private Hashtable<String, Integer> attrPosTable;
 	private ArrayList<Integer> primaryList;
 	private String tableName;
-	private List referenceList;	
+	private Hashtable<String, ForeignReferences>  referenceTable;	
 
-	public Create(String tableName, ArrayList<Attribute> attrList, ArrayList<Integer> primaryList, List referenceList, Hashtable<String, Integer> attrPosTable){
+	public Create(String tableName, ArrayList<Attribute> attrList, ArrayList<Integer> primaryList, Hashtable<String, ForeignReferences> referenceTable, Hashtable<String, Integer> attrPosTable){
 		this.queryName = "CREATE";
 		this.tableName = tableName;
 		this.attrList = attrList;
 		this.primaryList = primaryList;
-		this.referenceList = referenceList;
+		this.referenceTable = referenceTable;
 		this.attrPosTable = attrPosTable;
 	}
 
@@ -31,12 +31,20 @@ public class Create extends Query{
 		return this.primaryList;
 	}
 
-	public List getReferences(){
-		return this.referenceList;
+	public Hashtable<String, ForeignReferences>  getReferences(){
+		return this.referenceTable;
+	}
+
+	public int getAttrPos(String valueName){
+		if(this.attrPosTable.containsKey(valueName)){
+			return this.attrPosTable.get(valueName).intValue();
+		}else{
+			return -1;
+		}	
 	}
 
 	public Table getTable(){
-		return new Table(tableName, attrList, primaryList, referenceList, attrPosTable);
+		return new Table(tableName, attrList, primaryList, referenceTable, attrPosTable);
 	}
 
 

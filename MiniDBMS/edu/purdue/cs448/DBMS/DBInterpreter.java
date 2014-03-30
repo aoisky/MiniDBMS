@@ -11,29 +11,24 @@
     public class DBInterpreter implements DBInterpreterConstants {
         public static void main(String[] args) throws IOException{
             DBInterpreter interpreter;
+            DBUserController userController;
             DBExecutor executor;
             Query query;
             InputStream input;
 
-            if (args.length > 1) {
-                System.out.println("Use: dbmsinterpreter <input file>");
+            if (args.length != 1) {
+                System.out.println("Use: minidbms <userName>");
                 return;
             }
 
-            if (args.length == 1) {
-                try {
-                    input = new java.io.FileInputStream(args[0]);
-                    interpreter = new DBInterpreter(input);
-                } catch (java.io.FileNotFoundException ex) {
-                        System.out.println("File " + args[0] + " not found.");
-                        return;
-                }
+                String userName = args[0];
 
-            } else{
-                    input = System.in;
-                    interpreter = new DBInterpreter(input);
+                userController = new DBUserController(userName);
 
-            }
+                input = System.in;
+                interpreter = new DBInterpreter(input);
+
+
                 executor = new DBExecutor();
                 while(true){
                         try {
@@ -43,11 +38,12 @@
                                 }
                                 query = interpreter.Query();
 
-                                if(query == null){
-                                        return;
+                                query = userController.userCheck(query);
+
+                                if(query != null){
+                                        executor.execute(query);
                                 }
 
-                                executor.execute(query);
                                 if(input != System.in && input.available() == 0){
                                         return;
                                 }
@@ -65,32 +61,51 @@
 
 
      }
+                //a method to recover from syntax error
+                void error_skipto(int kind) {
+
+                        Token t;
+                        do {
+                                t = getNextToken();
+                        } while (t.kind != kind);
+                                // The above loop consumes tokens all the way up to a token of
+                                // "kind".  We use a do-while loop rather than a while because the
+                                // current token is the one immediately before the erroneous token
+                                // (in our case the token immediately before what should have been
+                                // "if"/"while".
+                }
 
 // Grammar
-  final public Query Query() throws ParseException {Query query;
-    switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
-    case 0:{
-      jj_consume_token(0);
+  final public Query Query() throws ParseException {Query query = null;
+    try {
+      switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
+      case 0:{
+        jj_consume_token(0);
 {if ("" != null) return null;}
-      break;
-      }
-    case KWORD_SELECT:
-    case KWORD_INSERT:
-    case KWORD_UPDATE:
-    case KWORD_CREATE:
-    case KWORD_DELETE:
-    case KWORD_DROP:
-    case KWORD_HELP:
-    case KWORD_QUIT:{
-      query = SQLStatement();
-      jj_consume_token(SYM_SEMICOLON);
+        break;
+        }
+      case KWORD_SELECT:
+      case KWORD_INSERT:
+      case KWORD_UPDATE:
+      case KWORD_CREATE:
+      case KWORD_DELETE:
+      case KWORD_DROP:
+      case KWORD_HELP:
+      case KWORD_QUIT:{
+        query = SQLStatement();
+        jj_consume_token(SYM_SEMICOLON);
 {if ("" != null) return query;}
-      break;
+        break;
+        }
+      default:
+        jj_la1[0] = jj_gen;
+        jj_consume_token(-1);
+        throw new ParseException();
       }
-    default:
-      jj_la1[0] = jj_gen;
-      jj_consume_token(-1);
-      throw new ParseException();
+    } catch (ParseException e) {
+System.out.println(e.toString());
+                error_skipto(SYM_SEMICOLON);
+                {if ("" != null) return null;}
     }
     throw new Error("Missing return statement in function");
   }
@@ -199,23 +214,23 @@ attrNameList.add(attrName.image);
       attrName = Identifier();
 attrNameList.add(attrName.image);
     }
-{if ("" != null) return null;}
+{if ("" != null) return new CreateSubschema(tableName.image, attrNameList);}
     throw new Error("Missing return statement in function");
   }
 
   final public CreateUser CreateUser() throws ParseException {Query query;
      Token userName;
-     boolean userType;
+     User.UserType userType;
     userName = Identifier();
     switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
     case 56:{
       jj_consume_token(56);
-userType = true;
+userType = User.UserType.USER_A;
       break;
       }
     case 57:{
       jj_consume_token(57);
-userType = false;
+userType = User.UserType.USER_B;
       break;
       }
     default:
@@ -223,14 +238,14 @@ userType = false;
       jj_consume_token(-1);
       throw new ParseException();
     }
-{if ("" != null) return null;}
+{if ("" != null) return new CreateUser(userType, userName.image);}
     throw new Error("Missing return statement in function");
   }
 
   final public DeleteUser DeleteUser() throws ParseException {Query query;
     Token userName;
     userName = Identifier();
-{if ("" != null) return null;}
+{if ("" != null) return new DeleteUser(userName.image);}
     throw new Error("Missing return statement in function");
   }
 
@@ -245,6 +260,7 @@ userType = false;
     ArrayList<Integer> primaryList = new ArrayList<Integer>();
     Token foreignTableName;
     Token foreignAttribute;
+    Hashtable<String, ForeignReferences> foreignRefTable = new Hashtable<String, ForeignReferences>();
     tableName = Identifier();
     jj_consume_token(SYM_LPARENTHESE);
     label_2:
@@ -291,7 +307,10 @@ if(cond != null && !cond.idCheck(attrName.image))
                         {if (true) throw new Error("CREATE TABLE: CHECK ATTRIBUTE INVALID " + attrName.image);}
                 attribute = new Attribute(type, attrName.image);
                 if(lengthToken != null)attribute.setLength(Integer.parseInt(lengthToken.image));
-                if(cond != null)attribute.setCheckCond(cond);
+                if(cond != null){
+                        attribute.setCheckCond(cond);
+                        cond = null;
+                }
                 if(!attrList.contains(attribute)){
                         //Save position of attribute name
                         attrPosTable.put(attrName.image, Integer.valueOf(attrList.size()));
@@ -362,9 +381,11 @@ if(!attrList.contains(new Attribute(Attribute.Type.INT, attrName.image)))
 
                         if(foreignTableName.image.equals(tableName.image))
                                 {if (true) throw new Error("CREATE TABLE: FOREIGN KEY TABLE CANNOT BE THE SAME NAME");}
+
+                        foreignRefTable.put(attrName.image, new ForeignReferences(foreignTableName.image, foreignAttribute.image));
     }
     jj_consume_token(SYM_RPARENTHESE);
-{if ("" != null) return new Create(tableName.image, attrList, primaryList, null, attrPosTable);}
+{if ("" != null) return new Create(tableName.image, attrList, primaryList, foreignRefTable, attrPosTable);}
     throw new Error("Missing return statement in function");
   }
 
@@ -582,7 +603,7 @@ attrAssignList.add(attrAssign);
 
   final public Query Quit() throws ParseException {
     jj_consume_token(SYM_SEMICOLON);
-System.exit(0); {if ("" != null) return null;}
+System.out.println(); System.exit(0); {if ("" != null) return null;}
     throw new Error("Missing return statement in function");
   }
 
@@ -909,6 +930,13 @@ Token idToken;
     finally { jj_save(2, xla); }
   }
 
+  private boolean jj_3_3()
+ {
+    if (jj_scan_token(KWORD_CREATE)) return true;
+    if (jj_scan_token(KWORD_USER)) return true;
+    return false;
+  }
+
   private boolean jj_3_2()
  {
     if (jj_scan_token(KWORD_DELETE)) return true;
@@ -920,13 +948,6 @@ Token idToken;
  {
     if (jj_scan_token(KWORD_CREATE)) return true;
     if (jj_scan_token(KWORD_TABLE)) return true;
-    return false;
-  }
-
-  private boolean jj_3_3()
- {
-    if (jj_scan_token(KWORD_CREATE)) return true;
-    if (jj_scan_token(KWORD_USER)) return true;
     return false;
   }
 

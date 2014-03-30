@@ -6,8 +6,8 @@ import java.io.*;
 
 //DBExecutor Author: Yudong Yang
 public class DBExecutor {
-	public static final String databaseDefUrl = "databaseDef.dat";
-
+	private static final String databaseDefUrl = "databaseDef.dat";
+	private static final String userDefUrl = "userDef.dat";
 
 
 	public void execute(Query query){
@@ -26,6 +26,12 @@ public class DBExecutor {
 				update((Update) query);
 			}else if(query instanceof Help){
 				help((Help) query);
+			}else if(query instanceof CreateUser){
+				createUser((CreateUser) query);
+			}else if(query instanceof DeleteUser){
+				deleteUser((DeleteUser) query);
+			}else if(query instanceof CreateSubschema){
+				
 			}
 		}catch(IOException ex){
 			System.err.println(ex.getMessage());
@@ -49,6 +55,37 @@ public class DBExecutor {
 		if(tables.get(query.getTableName()) != null){
 			throw new Error("CREATE TABLE: Table " + query.getTableName() + " already exists");
 		}
+
+		//Check foreign table constraints
+		Hashtable<String, ForeignReferences> foreignTable = query.getReferences();
+		if(foreignTable.size() != 0){
+			for(String attrName : foreignTable.keySet()){
+				Table table;
+				String tableName = foreignTable.get(attrName).getTableName();
+
+				if( (table = tables.get(tableName)) == null){
+					throw new Error("CREATE TABLE: Foreign Table " + tableName + " does not exists"); 
+				}
+			
+				String foreignAttrName = foreignTable.get(attrName).getAttrName();
+
+				int attrPos;
+				if((attrPos = table.getAttrPos(foreignAttrName)) == -1){
+					throw new Error("CREATE TABLE: Foreign constraints attribute " + foreignAttrName + " does not contains in the Table " + tableName );
+				}
+
+				Attribute.Type foreignAttrType = table.getAttrList().get(attrPos).getType();
+
+				int currentAttrPos = query.getAttrPos(attrName);
+				Attribute.Type currentAttrType = query.getAttributes().get(currentAttrPos).getType();
+
+				if(foreignAttrType != currentAttrType){
+					throw new Error("CREATE TABLE: Foreign constraints attribute " + foreignAttrName + " has a type that different from " + attrName);
+				}
+
+			}
+		}
+
 		//Write table definition to the databaseDef.dat
 		tables.put(query.getTableName(), query.getTable());
 		this.writeTableDef(tableFile, tables);	
@@ -302,6 +339,81 @@ public class DBExecutor {
 
 	}
 
+	public void createUser(CreateUser query) throws IOException, Error, ClassNotFoundException{
+
+		Hashtable<String, User> userTable = null;
+		File userTableFile = new File(userDefUrl);
+
+		if(userTableFile.exists()){
+			userTable = this.getUserDef();	
+		}else{
+			userTable = new Hashtable<String, User>();
+		}
+
+		String userName;
+		User.UserType userType;
+		
+		userName = query.getUserName();
+		userType = query.getUserType();
+		
+		if(userTable.get(userName) != null){
+			throw new Error("Create User: User " + userName + " already exists");
+		}
+
+		User newUser = new User(userType, userName);
+
+		userTable.put(userName, newUser);
+
+		this.writeUserDef(userTableFile, userTable);
+		System.out.println("User created successfully");
+	}
+
+	public void deleteUser(DeleteUser query) throws IOException, ClassNotFoundException, Error{
+		Hashtable<String, User> userTable = null;
+		File userTableFile = new File(userDefUrl);
+
+		if(userTableFile.exists()){
+			userTable = this.getUserDef();	
+		}else{
+			throw new Error("DELETE USER: No user defined");
+		}
+
+		String userName;
+		
+		userName = query.getUserName();
+
+		if(userTable.get(userName) == null){
+			throw new Error("DELETE USER: User " + userName + " does not exists");
+		}
+
+		userTable.remove(userName);
+
+		this.writeUserDef(userTableFile, userTable);
+		System.out.println("User deleted successfully");
+
+	}
+
+	private Hashtable<String, User> getUserDef() throws IOException, ClassNotFoundException{
+		Hashtable<String, User> userTable = null;
+		File tableFile = new File(userDefUrl);
+
+		FileInputStream fileIn = new FileInputStream(tableFile);
+		ObjectInputStream in = new ObjectInputStream(fileIn);
+		userTable = (Hashtable<String, User>) in.readObject();
+		in.close();
+		fileIn.close();
+
+		return userTable;
+
+	}
+
+	private void writeUserDef(File userDefFile, Hashtable<String, User> userTable) throws IOException{
+		FileOutputStream outFile = new FileOutputStream(userDefFile);
+		ObjectOutputStream outObject = new ObjectOutputStream(outFile);
+		outObject.writeObject(userTable);
+		outObject.close();
+		outFile.close();
+	}
 
 	public void help(Help query) throws IOException, Error, ClassNotFoundException{
 		Help.HelpType helpType = query.getHelpType();
@@ -312,34 +424,97 @@ public class DBExecutor {
 			break;
 
 			case CREATE:
-	
+				this.printDescriptions("CREATE");
 			break;
 
 			case INSERT:
-
+				this.printDescriptions("INSERT");
 			break;
 
 			case DELETE:
-
+				this.printDescriptions("DELETE");
 			break;
 
 			case DROP:
-
+				this.printDescriptions("DROP");
 			break;
 
 			case UPDATE:
-	
+				this.printDescriptions("UPDATE");
 			break;
 
 			case SELECT:
-
+				this.printDescriptions("SELECT");
 			break;
 			
 			case TABLES:
-
+				this.printTableList();
 			break;
 		}
 
+
+	}
+
+	private void printDescriptions(String name){
+		
+		switch(name){
+			case "CREATE":
+				System.out.println("HELP CREATE: Create a table into the database\n" + 
+						"Expected Form: \n" + 
+						"CREATE TABLE table_name ( attribute_1 attribute1_type CHECK(constraint1), attribute_2 attribute2_type, ..., PRIMARY KEY ( attribute_1, attribute_2 ), FOREIGN KEY ( attribute_y ) REFERENCES table_x ( attribute_t ), FOREIGN KEY ( attribute_w ) REFERENCES table_y ( attribute_z )... );\n");
+			break;
+
+			case "INSERT":
+				System.out.println("HELP INSERT: Insert tuple into a table\n" + 
+						"Expected Form: \n" + 
+						"INSERT INTO table_name VALUES ( val1, val2, ...); \n");
+			break;
+
+			case "DELETE":
+				System.out.println("HELP DELETE: Delete values in a table\n" +
+						"Expected Form: \n" + 
+						"DELETE FROM table_name ( WHERE condition_list ) ; \"WHERE\" keyword is optional\n");
+			break;
+
+			case "DROP":
+				System.out.println("HELP DROP TABLE: Drop a table from the database\n" +
+						"Expected Form: \n" + 
+						"DROP TABLE table_name; \n");
+			break;
+
+			case "UPDATE":
+				System.out.println("HELP UPDATE: Update attribute values\n" + 
+						"Expected Form: \n" + 
+						"UPDATE table_name SET attr1 = val1, attr2 = val2... ( WHERE condition_list; ) \"WHERE\" keyword is optional\n");
+			break;
+
+			case "SELECT":
+				System.out.println("HELP SELECT: Select attributes from tables by using conditional expression\n" +
+						"Expected Form: \n" + 
+						"SELECT attribute_list FROM table_list ( WHERE condition_list ); \"WHERE\" keyword is optional\n");
+			break;
+
+		}
+
+	}
+
+	private void printTableList() throws IOException, ClassNotFoundException, Error{
+		Hashtable<String, Table> tables = null;
+
+		File tableFile = new File(databaseDefUrl);
+		if(tableFile.exists()){
+			tables = this.getTableDef();
+		}else{
+			throw new Error("HELP TABLES: No tables found");  
+		}
+
+		if(tables.size() == 0){
+			throw new Error("HELP TABLES: No tables found");
+		}
+
+		for(String tableName : tables.keySet()){
+			System.out.println(tableName);
+		}
 
 	}
 
@@ -383,6 +558,7 @@ public class DBExecutor {
 	}
 
 	private void printTable(TuplesWithNameTable tuplesTable){
+		System.out.println();
 		ArrayList<ArrayList<Value>> tupleList = tuplesTable.getTupleList();
 		Hashtable<String, Integer> nameTable = tuplesTable.getNameTable();
 		if(tupleList.size()== 0){
@@ -397,13 +573,14 @@ public class DBExecutor {
 
 		//Print attribute names
 		for(int i = 0; i < orderedAttrNames.length; i++){
-			System.out.print(orderedAttrNames[i] + "\t");
+			System.out.printf("%-20s", orderedAttrNames[i]);
 		}
+
 		System.out.println();
 
 		for(ArrayList<Value> tuple : tupleList){
 			for(Value value : tuple){
-				System.out.print(value.toString() + "\t");
+				System.out.printf("%-20s", value.toString());
 			}
 			System.out.println();
 		}
@@ -518,6 +695,16 @@ public class DBExecutor {
 		if(tables.get(query.getTableName()) == null){
 			throw new Error("DROP TABLE: No Table " + query.getTableName() + " Found");
 		}else{
+
+			//Check drop foreign constraints
+			for(Table table : tables.values()){
+				for(ForeignReferences foreignRef : table.getReferenceTable().values()){
+					if(foreignRef.getTableName().equals(query.getTableName())){
+						throw new Error("DROP TABLE: Error: Table " + table.getTableName() + " has foreign references constraints of Table " + query.getTableName());
+					}
+				}
+			}
+
 			tables.remove(query.getTableName());
 			this.writeTableDef(tableFile, tables);
 			File databaseFile = new File(query.getTableName() + ".db");

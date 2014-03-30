@@ -3,6 +3,7 @@ package edu.purdue.cs448.DBMS.Structure;
 import edu.purdue.cs448.DBMS.DBExecutor;
 
 public class DoubleExp extends Exp{
+	private static final long serialVersionUID = 312384376123L;
 	private double doubleNum;
 
 	public DoubleExp(double doubleNum){

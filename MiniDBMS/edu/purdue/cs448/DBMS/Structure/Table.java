@@ -9,14 +9,14 @@ private static final long serialVersionUID = 1567876578L;
 	private ArrayList<Attribute> attrList;
 	private Hashtable<String, Integer> attrPosTable;
 	private ArrayList<Integer> primaryList;
-	private List referenceList;
+	private Hashtable<String, ForeignReferences> referenceTable;
 
-	public Table(String tableName, ArrayList<Attribute> attrList, ArrayList<Integer> primaryList, List referenceList, Hashtable<String, Integer> attrPosTable){
+	public Table(String tableName, ArrayList<Attribute> attrList, ArrayList<Integer> primaryList, Hashtable<String, ForeignReferences> referenceTable, Hashtable<String, Integer> attrPosTable){
 		this.tableName = tableName;
 		this.attrList = attrList;
 		this.attrPosTable = attrPosTable;
 		this.primaryList = primaryList;
-		this.referenceList = referenceList;
+		this.referenceTable = referenceTable;
 	}
 
 	public ArrayList<Attribute> getAttrList(){
@@ -27,8 +27,8 @@ private static final long serialVersionUID = 1567876578L;
 		return this.primaryList;
 	}
 
-	public List getReferenceList(){
-		return this.referenceList;
+	public Hashtable<String, ForeignReferences> getReferenceTable(){
+		return this.referenceTable;
 	}
 
 	public String getTableName(){

@@ -4,6 +4,7 @@ import edu.purdue.cs448.DBMS.DBExecutor;
 import java.util.*;
 
 public class BinaryExp extends Exp{
+	private static final long serialVersionUID = 1276455294L;
 	private Exp right;
 	private Exp left;
 	private String op;
