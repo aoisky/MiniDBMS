@@ -3,13 +3,14 @@ package edu.purdue.cs448.DBMS.Structure;
 import java.util.*;
 
 public class Table implements java.io.Serializable {
-private static final long serialVersionUID = 1567876578L;
+private static final long serialVersionUID = 156782376578L;
 
 	private String tableName;
 	private ArrayList<Attribute> attrList;
 	private Hashtable<String, Integer> attrPosTable;
 	private ArrayList<Integer> primaryList;
 	private Hashtable<String, ForeignReferences> referenceTable;
+	private ArrayList<String> subSchemaList = null;
 
 	public Table(String tableName, ArrayList<Attribute> attrList, ArrayList<Integer> primaryList, Hashtable<String, ForeignReferences> referenceTable, Hashtable<String, Integer> attrPosTable){
 		this.tableName = tableName;
@@ -46,6 +47,14 @@ private static final long serialVersionUID = 1567876578L;
 
 	public Hashtable<String, Integer> getAttrPosHashtable(){
 		return this.attrPosTable;
+	}
+
+	public void setSubschema(ArrayList<String> subSchemaList){
+		this.subSchemaList = subSchemaList;
+	}
+
+	public ArrayList<String> getSubschemaList(){
+		return this.subSchemaList;
 	}
 
 }

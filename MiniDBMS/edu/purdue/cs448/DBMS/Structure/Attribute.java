@@ -30,6 +30,18 @@ private static final long serialVersionUID = 77658635285L;
 	public Type getType(){
 		return this.type;
 	}	
+
+	public String getTypeString(){
+		if(this.type == Type.INT){
+			return "int";
+		}else if(this.type == Type.DECIMAL){
+			return "decimal";
+		}else if(this.type == Type.CHAR){
+			return "char(" + this.getLength() + ")";
+		}else{
+			return "";
+		}
+	}
 	
 	public void setPrimary(){
 		this.primary = true;

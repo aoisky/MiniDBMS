@@ -31,7 +31,7 @@ public class DBExecutor {
 			}else if(query instanceof DeleteUser){
 				deleteUser((DeleteUser) query);
 			}else if(query instanceof CreateSubschema){
-				
+				createSubschema((CreateSubschema) query);
 			}
 		}catch(IOException ex){
 			System.err.println(ex.getMessage());
@@ -120,11 +120,16 @@ public class DBExecutor {
 
 			if(tupleList != null && valueList != null){
 				//Check primary key constraints
-				boolean isNotViolatePrimary = checkPrimarys(table.getPrimaryList(), tupleList, valueList);
+				boolean isNotViolatePrimary = this.checkPrimarys(table.getPrimaryList(), tupleList, valueList);
 
 				//Needs to check length
 				//!!!!!!!!!!!!!!!!!!
-				if(isNotViolatePrimary){
+
+				//Check foreign constraints
+				boolean isNotViolateForeign = this.checkForeignConstraints(tables, table, valueList);
+
+
+				if(isNotViolatePrimary && isNotViolateForeign){
 					tupleList.add(valueList);
 				}else{
 					throw new Error("INSERT: Primary key constraints violated");
@@ -141,7 +146,7 @@ public class DBExecutor {
 
 	public void select(Select query) throws IOException, Error, ClassNotFoundException{
 		Hashtable<String, Table> tables = null;
-
+		boolean isNormalUser = query.isNormalUser();
 		File tableFile = new File(databaseDefUrl);
 		//Check if database defined
 		if(tableFile.exists()){
@@ -192,13 +197,35 @@ public class DBExecutor {
 		}else{
 			//If select all attributes
 			allAttributeList = new ArrayList<String>();
-			//attrStrList = new ArrayList<String>();
-			for(String tableName : tableList.keySet()){
-				Table table = tableList.get(tableName);
-				for(Attribute attr : table.getAttrList()){
-					allAttributeList.add(attr.getName());
-					//
+			
+			//Check if needs to check subschema
+			if(!isNormalUser){
+				for(String tableName : tableList.keySet()){
+					Table table = tableList.get(tableName);
+					for(Attribute attr : table.getAttrList()){
+						allAttributeList.add(attr.getName());
+						
+					}
 				}
+
+			}else{
+				//Put all attributes in the subschema
+				for(String tableName : tableList.keySet()){
+					Table table = tableList.get(tableName);
+					ArrayList<String> subSchemaList = table.getSubschemaList();
+					for(Attribute attr : table.getAttrList()){
+						if(subSchemaList != null){
+							if(subSchemaList.contains(attr.getName()) != false){
+								allAttributeList.add(attr.getName());
+							}
+						}else{
+							allAttributeList.add(attr.getName());
+						}
+					}
+	
+				}
+
+
 			}
 
 		}
@@ -216,8 +243,17 @@ public class DBExecutor {
 			boolean containsAttr = false;
 			for(String tableName : tableList.keySet()){
 				Table table = tableList.get(tableName);
+				ArrayList<String> subSchemaList = table.getSubschemaList();
+
 				if(table.getAttrPos(attrName) != -1){
 					containsAttr = true;
+
+					//Check subschema for normal user
+					if(isNormalUser && subSchemaList != null){
+						if(subSchemaList.contains(attrName) == false){
+							containsAttr = false;
+						}
+					}
 				}
 			}
 			if(containsAttr == false){
@@ -226,7 +262,7 @@ public class DBExecutor {
 		}
 
 		//Start joining multiple tables to a single table that depends on all attributes needs to be in the new table
-		TuplesWithNameTable combinedTable = combineTables(tableArrayList, tupleHashTable, allAttributeList, query.isSelectAll());
+		TuplesWithNameTable combinedTable = combineTables(tableArrayList, tupleHashTable, allAttributeList, query.isSelectAll(), isNormalUser);
 
 		//Evaluate condition
 		if(selectCond != null){
@@ -393,6 +429,39 @@ public class DBExecutor {
 
 	}
 
+	private void createSubschema(CreateSubschema query) throws IOException, Error, ClassNotFoundException{
+		String tableName = query.getTableName();
+		ArrayList<String> subSchemaList = query.getAttrNameList();
+
+		Hashtable<String, Table> tables = null;
+		Table table;
+		File tableFile = new File(databaseDefUrl);
+		if(tableFile.exists()){
+			tables = this.getTableDef();
+		}else{
+			throw new Error("CREATE SUBSCHEMA: No database defined");  
+		}
+
+		table = tables.get(tableName);
+
+		if(table == null){
+			throw new Error("CREATE SUBSCHEMA: Table " + tableName + " is not defined");
+		}
+
+		for(String subAttr : subSchemaList){
+			if(table.getAttrPos(subAttr) == -1){
+				throw new Error("CREATE SUBSCHEMA: Table " + tableName + " does not have an attribute " + subAttr);
+			}
+		}
+
+		table.setSubschema(subSchemaList);
+
+		this.writeTableDef(tableFile, tables);
+	
+		System.out.println("Subschema created successfully");
+
+	}
+
 	private Hashtable<String, User> getUserDef() throws IOException, ClassNotFoundException{
 		Hashtable<String, User> userTable = null;
 		File tableFile = new File(userDefUrl);
@@ -404,6 +473,61 @@ public class DBExecutor {
 		fileIn.close();
 
 		return userTable;
+
+	}
+
+	private boolean checkForeignConstraints(Hashtable<String, Table> tables, Table currentTable, ArrayList<Value> valueList) throws IOException, ClassNotFoundException{
+		Hashtable<String, ForeignReferences> foreignTables = currentTable.getReferenceTable();
+		if(foreignTables == null){
+			return true;
+		}
+
+		for(String attrName : foreignTables.keySet()){
+			boolean containsValue = false;
+			ForeignReferences foreignRefs = foreignTables.get(attrName);
+
+			String foreignTableName = foreignRefs.getTableName();
+			String foreignAttrName = foreignRefs.getAttrName();
+			
+			Table foreignTable = tables.get(foreignTableName);
+
+			if(foreignTable == null){
+				throw new Error("INSERT: Foreign References Constraints: No foreign table " + foreignTableName + " exists");
+			}
+
+			int foreignAttrPos = foreignTable.getAttrPos(foreignAttrName);
+			
+			File tupleFile = new File(foreignTableName + ".db");
+			ArrayList< ArrayList<Value> > tupleList;
+
+			if(tupleFile.exists()){
+				tupleList = this.getTupleList(tupleFile);
+			}else{
+				throw new Error("INSERT: Foreign References Constraints: No tuple file of foreign table " + foreignTableName);
+			}
+
+			if(tupleList.size() == 0){
+				throw new Error("INSERT: Foreign References Constraints: No tuple in the foreign table " + foreignTableName);
+			}
+
+			int currentValuePos = currentTable.getAttrPos(attrName);
+
+			Value currentValue = valueList.get(currentValuePos);
+
+			for(ArrayList<Value> values : tupleList){
+				
+				Value foreignValue = values.get(foreignAttrPos);
+				if(currentValue.equals(foreignValue)){
+					containsValue = true;
+				}
+				
+			}
+			if(!containsValue){
+				throw new Error("INSERT: Foreign References Constraints: Inserting Value " + currentValue.toString() + " is not contained in the table " + foreignTableName);
+			}
+
+		}
+		return true;
 
 	}
 
@@ -420,7 +544,7 @@ public class DBExecutor {
 
 		switch(helpType){
 			case DESCRIBE:
-
+				this.printTableDescribe(query.getTableName(), query.isNormalUser());
 			break;
 
 			case CREATE:
@@ -452,6 +576,73 @@ public class DBExecutor {
 			break;
 		}
 
+
+	}
+
+	private void printTableDescribe(String tableName, boolean isNormalUser) throws IOException, Error, ClassNotFoundException{
+		System.out.println();
+		Hashtable<String, Table> tables = null;
+
+		File tableFile = new File(databaseDefUrl);
+		if(tableFile.exists()){
+			tables = this.getTableDef();
+		}else{
+			throw new Error("HELP DESCRIBE TABLE: No tables found");  
+		}
+
+		if(tables.size() == 0){
+			throw new Error("HELP DESCRIBE TABLE: No tables found");
+		}
+
+		Table table = tables.get(tableName);
+
+		if(table == null){
+			throw new Error("HELP DESCRIBE TABLE: Table " + tableName + " not defined");
+		}
+
+		ArrayList<Attribute> attrList = table.getAttrList();
+		ArrayList<Integer> primaryList = table.getPrimaryList();
+
+		Hashtable<String, ForeignReferences> refTables = table.getReferenceTable();
+		ArrayList<String> subschemaList = null;
+
+		if(isNormalUser){
+			subschemaList = table.getSubschemaList();
+		}
+		
+		int attrPos = 0;
+		for(Attribute attribute : attrList){
+
+			if(subschemaList != null){
+				if(subschemaList.contains(attribute.getName()) == false){
+					continue;
+				}
+			}
+			System.out.print(attribute.getName());
+			System.out.print(" -- ");
+			System.out.print(attribute.getTypeString());
+
+			if(primaryList.contains(attrPos)){
+				System.out.print(" -- ");
+				System.out.print("primary key");
+			}
+			Condition checkCond = attribute.getCheckCond();
+			if(checkCond != null){
+				System.out.print(" -- ");
+				this.printExp(checkCond.getExp());
+				
+			}
+
+			ForeignReferences foreignRef = refTables.get(attribute.getName());
+
+			if(foreignRef != null){
+				System.out.print(" -- ");
+				System.out.print("foreign key references " + foreignRef.getTableName() + "(" + foreignRef.getAttrName() + ")");
+			}
+			System.out.println();
+
+			attrPos++;
+		}
 
 	}
 
@@ -589,7 +780,7 @@ public class DBExecutor {
 	}
 
 
-	private TuplesWithNameTable combineTables(ArrayList<Table> tables, Hashtable<String, ArrayList< ArrayList<Value> > > tupleHashtable, ArrayList<String> allAttributes, boolean selectAll){
+	private TuplesWithNameTable combineTables(ArrayList<Table> tables, Hashtable<String, ArrayList< ArrayList<Value> > > tupleHashtable, ArrayList<String> allAttributes, boolean selectAll, boolean isNormalUser){
 
 		ArrayList<ArrayList<Value>> combinedTupleList = new ArrayList<ArrayList<Value>>();
 		Hashtable<String, Integer> combinedAttrNameList = new Hashtable<String, Integer>();		
@@ -604,7 +795,12 @@ public class DBExecutor {
 			if(!selectAll){
 				neededValueTable = this.getNeededValuesTuples(table, tupleList, allAttributes);
 			}else{
-				neededValueTable = new TuplesWithNameTable(table.getAttrPosHashtable(), tupleList);
+				//Check if it is normal user and select only subschema values
+				if(!isNormalUser){
+					neededValueTable = new TuplesWithNameTable(table.getAttrPosHashtable(), tupleList);
+				}else{
+					neededValueTable = this.getNeededValuesTuples(table, tupleList, allAttributes);
+				}
 			}
 			allTables.add(neededValueTable);
 		}
@@ -881,8 +1077,9 @@ public class DBExecutor {
 					Integer attrPos = nameTable.get(attrName);
 
 					tuple.set(attrPos.intValue(), attrAssign.getValue());
-					updatedValueNum++;
+					
 				}
+				updatedValueNum++; //Update tuple num
 			}
 		}else{
 			//Evaluate condition and update tuples that satisfies the condition
@@ -900,8 +1097,9 @@ public class DBExecutor {
 							
 							int namePos = nameTable.get(attrName).intValue();
 							tuple.set(namePos, updatedValue);
-							updatedValueNum++;
+							
 						}
+						updatedValueNum++; //Update tuple num
 					}
 				}
 			}
@@ -923,6 +1121,15 @@ public class DBExecutor {
 		if(cond == null){
 			tupleList.clear();
 			return tupleList;
+		}
+
+		//Check if all condition values in the table
+		ArrayList<String> condIdList = cond.getIdList();
+
+		for(String id : condIdList){
+			if(nameTable.get(id) == null){
+				throw new Error("DELETE: The attribute " + id + " in the condition does not exists in the table");
+			}
 		}
 
 		Exp exp = cond.getExp();
@@ -990,6 +1197,41 @@ public class DBExecutor {
 
 		}
 		return new TuplesWithNameTable(nameTable, newTupleList);
+	}
+
+	private void printExp(Exp exp){
+		if(exp == null){
+			return;
+		}
+
+		if(exp instanceof BinaryExp){
+			Exp leftExp;
+			if( (leftExp = ((BinaryExp) exp).getLeft()) != null){
+				printExp(leftExp);
+			}
+
+			System.out.print(" " + ((BinaryExp)exp).getOp() + " ");
+
+			Exp rightExp;
+			if( (rightExp = ((BinaryExp) exp).getRight()) != null){
+				printExp(rightExp);
+			}
+			return;
+		}else if(exp instanceof IntExp){
+			System.out.print(((IntExp)exp).getInt());
+			return;
+		}else if(exp instanceof DoubleExp){
+			System.out.print(((DoubleExp)exp).getDouble());
+			return;
+		}else if(exp instanceof IdExp){
+			System.out.print(((IdExp)exp).getId());
+			return;
+		}else if(exp instanceof StrExp){
+			System.out.print(((StrExp)exp).getString());
+			return;
+		}
+
+		return;
 	}
 
 	public Object visit(BinaryExp exp, Value value, Hashtable<String, Integer> attrPosTable, ArrayList<Value> tuple){

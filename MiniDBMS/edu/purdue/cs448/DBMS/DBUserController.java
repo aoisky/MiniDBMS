@@ -71,8 +71,8 @@ public class DBUserController{
 			}else if(query instanceof Drop){
 				op = "Drop";
 			}else if(query instanceof Select){
-				//Change subschema
-	
+				//Set query to normal user to check subschema
+				((Select)query).setNormalUser();
 				return query;
 			}else if(query instanceof Delete){
 				op = "Delete";
@@ -80,7 +80,7 @@ public class DBUserController{
 				op = "Update";
 			}else if(query instanceof Help){
 				//Change to subschema
-
+				((Help)query).setNormalUser();
 				return query;
 			}else if(query instanceof CreateUser){
 				op = "Create User";

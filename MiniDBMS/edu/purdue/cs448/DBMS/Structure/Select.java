@@ -8,6 +8,7 @@ public class Select extends Query{
 	private ArrayList<String> tableNames;
 	private Condition cond;
 	private boolean selectAll;
+	private boolean isNormalUser = false;
 
 	public Select(ArrayList<String> attrList, ArrayList<String> tableNames, Condition cond){
 		this.queryName = "SELECT";
@@ -39,5 +40,12 @@ public class Select extends Query{
 		return this.selectAll;
 	}
 
+	public void setNormalUser(){
+		this.isNormalUser = true;
+	}
+
+	public boolean isNormalUser(){
+		return this.isNormalUser;
+	}
 
 }

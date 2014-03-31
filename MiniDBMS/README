@@ -1,0 +1,25 @@
+CS448 - Project 2
+Author: Yudong Yang
+Login: yang445
+Email: yang445@purdue.edu
+
+System Structure:
+
+DBInterpreter: Interprets Database query and creates query objects that can be executed by DBExecutor
+Written by using JavaCC, supports ignored cases queries and arithmetical operators(+, -, *, /), "AND" "OR"
+
+A complete query should be ended by a semicolon, so that any lexical error can be recognized.
+
+Supports both interactive mode and batch mode:
+
+Interactive mode:
+minidbms <username>
+
+Batch mode:
+minidbms <username> < batch_filename
+
+DBExecutor: Executes queries and creates database and user definition files
+
+DBUserController: Controls the user access and denies unauthorized operations
+
+Internal admin user name: admin

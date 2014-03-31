@@ -10,6 +10,7 @@ public class Help extends Query{
 
 	private String tableName;
 	private HelpType helpType;
+	private boolean isNormalUser = false;
 
 	public Help(HelpType helpType){
 		this.queryName = "HELP";
@@ -28,5 +29,13 @@ public class Help extends Query{
 
 	public HelpType getHelpType(){
 		return this.helpType;
+	}
+
+	public void setNormalUser(){
+		this.isNormalUser = true;
+	}
+
+	public boolean isNormalUser(){
+		return this.isNormalUser;
 	}
 }
